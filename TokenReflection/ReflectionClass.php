@@ -1980,7 +1980,52 @@ class ReflectionClass extends ReflectionElement implements IReflectionClass
 					break;
 			}
 		}
+		foreach ((array) $this->getAnnotation('property') as $annotation) {
+			$this->processPropertyAnnotation($annotation, '<i>@property</i>');
+		}
+		foreach ((array) $this->getAnnotation('property-read') as $annotation) {
+			$this->processPropertyAnnotation($annotation, '<i>@property-read</i>');
+		}
+		foreach ((array) $this->getAnnotation('property-write') as $annotation) {
+			$this->processPropertyAnnotation($annotation, '<i>@property-write</i>');
+		}
+		
+		foreach ((array) $this->getAnnotation('method') as $annotation) {
+			$this->processMethodAnnotation($annotation, '<i>@method</i>');
+		}
 
 		return $this;
+	}
+	
+	private function processPropertyAnnotation($annotation, $prependDescription = '')
+	{
+		$regexp = '~(?<type>[^\s]+)\s+(?<name>\$[^\s]+)\s?(?<description>.*)~';
+		if ($matches = \Nette\Utils\Strings::match($annotation, $regexp)) {
+			$docblock = "/**\n * @var $matches[type]  $prependDescription $matches[description]\n */";
+			array_unshift($this->docblockTemplates, new ReflectionAnnotation($this, $docblock));
+			$propertyTokenStream = new \TokenReflection\Stream\StringStream("<?php public $matches[name];", 'Is this value ever used?');
+			$propertyTokenStream->next();
+			$this->properties[] = new \TokenReflection\ReflectionProperty($propertyTokenStream, $this->getBroker(), $this);
+			array_shift($this->docblockTemplates);
+		}
+	}
+	
+	private function processMethodAnnotation($annotation, $prependDescription = '')
+	{
+		$regexp = '~(?<type>[^\s]+)\s+(?<name>[^\s]+)\s?\((?<args>[^)]*)\)\s?(?<description>.*)~';
+		if ($matches = \Nette\Utils\Strings::match($annotation, $regexp)) {
+			$docblock = "/**"
+				. "\n* @description $prependDescription $matches[description]"
+				. "\n* @return $matches[type]";
+			$docblock .= "\n*/\n";
+			$docblockReflection = new ReflectionAnnotation($this, $docblock);
+			array_unshift($this->docblockTemplates, $docblockReflection);
+			
+			$methodTokenStream = new \TokenReflection\Stream\StringStream("<?php public function $matches[name]($matches[args]) {}", 'Is this value ever used?');
+			$methodTokenStream->next();
+			$methodReflection = new \TokenReflection\ReflectionMethod($methodTokenStream, $this->getBroker(), $this);
+			$this->methods[] = $methodReflection;
+			array_shift($this->docblockTemplates);
+		}
 	}
 }
